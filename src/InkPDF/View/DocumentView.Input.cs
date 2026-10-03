@@ -291,12 +291,21 @@ public sealed partial class DocumentView
             _holdSince = Environment.TickCount64;
         }
         var loc = ToPage(_gPage, pos);
+        if (_snap == null && _wet != null && IsKeyDown(VirtualKey.Shift))
+        {
+            // Shift held: straight line from where the stroke started, at the nominal width.
+            float r = (_wet.Kind == StrokeKind.Highlighter ? Settings.HlWidth : Settings.PenWidth) / 2;
+            _snap = new ShapeResult(ShapeKind.Line, [_wet.Builder.Control[0].P, loc], r);
+            _wet.Hidden = true;
+            UpdateWetHighlight();
+        }
         if (_snap != null)
         {
-            // After snapping to a line, the free end follows the pen until it lifts.
+            // After snapping to a line, the free end follows the pen until it lifts
+            // (snapping to horizontal / vertical / 45° when within 3°).
             if (_snap.Kind == ShapeKind.Line)
             {
-                _snap = _snap with { Points = [_snap.Points[0], loc] };
+                _snap = _snap with { Points = [_snap.Points[0], Shapes.SnapAngle(_snap.Points[0], loc, false)] };
                 _preview = Shapes.FromResult(_gPage, _snap, _wet!.Color, _wet.Kind);
             }
             return;

@@ -20,8 +20,9 @@ namespace InkPDF;
 
 public sealed partial class MainWindow : Window
 {
-    static readonly uint[] PenColors = [0x000000, 0x1E5BD8, 0xD32F2F, 0x2E7D32, 0xEF6C00, 0x7B1FA2];
-    static readonly uint[] HlColors = [0xFFF176, 0xA5F5A5, 0xFFB0DA, 0xA0DDFF, 0xFFCC80];
+    // Black, dark blue, red, green; anything else comes from the colour wheel.
+    static readonly uint[] PenColors = [0x000000, 0x1F3A93, 0xD32F2F, 0x2E7D32];
+    static readonly uint[] HlColors = [0xFFF176, 0xA5F5A5, 0xFFB0DA, 0xA0DDFF];
     static readonly Tool[] ShapeCycle = [Tool.Line, Tool.Arrow, Tool.Rect, Tool.Ellipse, Tool.Axes];
 
     readonly ToolSettings _settings = ToolSettings.Load();
@@ -421,37 +422,83 @@ public sealed partial class MainWindow : Window
         SizeSlider.Value = Math.Clamp(SizeSlider.Value + dir * (_settings.Tool is Tool.Highlighter or Tool.Eraser ? 2 : 0.2), SizeSlider.Minimum, SizeSlider.Maximum);
     }
 
+    static Windows.UI.Color ToColor(uint c) => ColorHelper.FromArgb(255, (byte)(c >> 16), (byte)(c >> 8), (byte)c);
+    static uint FromColor(Windows.UI.Color c) => ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
+
     void BuildSwatches()
     {
         Swatches.Children.Clear();
         bool hl = _settings.Tool == Tool.Highlighter;
         var colors = hl ? HlColors : PenColors;
         uint current = hl ? _settings.HlColor : _settings.PenColor;
-        for (int i = 0; i < colors.Length; i++)
+        // A colour picked before (e.g. from an older palette) lives in the custom slot.
+        if (!colors.Contains(current))
         {
-            uint c = colors[i];
-            var b = new Button
-            {
-                Padding = new Thickness(3),
-                MinWidth = 0,
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-                AllowFocusOnInteraction = false,
-                IsTabStop = false,
-                Content = new Border
-                {
-                    Width = 20,
-                    Height = 20,
-                    CornerRadius = new CornerRadius(10),
-                    Background = new SolidColorBrush(ColorHelper.FromArgb(255, (byte)(c >> 16), (byte)(c >> 8), (byte)c)),
-                    BorderThickness = new Thickness(c == current ? 3 : 1),
-                    BorderBrush = new SolidColorBrush(c == current ? ColorHelper.FromArgb(255, 0x1A, 0x73, 0xE8) : ColorHelper.FromArgb(80, 0, 0, 0)),
-                },
-            };
-            ToolTipService.SetToolTip(b, hl ? "Highlighter colour" : $"Colour ({i + 1})");
-            b.Click += (_, _) => PickColor(c);
-            Swatches.Children.Add(b);
+            if (hl) _settings.HlCustomColor = current;
+            else _settings.PenCustomColor = current;
         }
+        uint custom = hl ? _settings.HlCustomColor : _settings.PenCustomColor;
+
+        for (int i = 0; i < colors.Length; i++)
+            Swatches.Children.Add(Swatch(colors[i], current, $"Colour ({i + 1})"));
+        Swatches.Children.Add(Swatch(custom, current, "Custom colour (5)"));
+
+        var picker = new ColorPicker
+        {
+            ColorSpectrumShape = ColorSpectrumShape.Ring,
+            IsAlphaEnabled = false,
+            IsMoreButtonVisible = false,
+            IsColorChannelTextInputVisible = false,
+            IsHexInputVisible = true,
+            Color = ToColor(custom),
+        };
+        var flyout = new Flyout { Content = picker };
+        flyout.Closed += (_, _) =>
+        {
+            uint chosen = FromColor(picker.Color);
+            if (chosen == custom) return;
+            if (hl) _settings.HlCustomColor = chosen;
+            else _settings.PenCustomColor = chosen;
+            PickColor(chosen);
+        };
+        var wheel = new Button
+        {
+            Padding = new Thickness(5),
+            MinWidth = 0,
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            AllowFocusOnInteraction = false,
+            IsTabStop = false,
+            Content = new FontIcon { Glyph = "", FontSize = 16 },
+            Flyout = flyout,
+        };
+        ToolTipService.SetToolTip(wheel, "More colours…");
+        Swatches.Children.Add(wheel);
+    }
+
+    Button Swatch(uint c, uint current, string tip)
+    {
+        var b = new Button
+        {
+            Padding = new Thickness(3),
+            MinWidth = 0,
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            AllowFocusOnInteraction = false,
+            IsTabStop = false,
+            Content = new Border
+            {
+                Width = 20,
+                Height = 20,
+                CornerRadius = new CornerRadius(10),
+                Background = new SolidColorBrush(ToColor(c)),
+                BorderThickness = new Thickness(c == current ? 3 : 1),
+                BorderBrush = new SolidColorBrush(c == current ? ColorHelper.FromArgb(255, 0x1A, 0x73, 0xE8) : ColorHelper.FromArgb(80, 0, 0, 0)),
+            },
+        };
+        ToolTipService.SetToolTip(b, tip);
+        b.Click += (_, _) => PickColor(c);
+        return b;
     }
 
     void PickColor(uint c)
@@ -563,11 +610,12 @@ public sealed partial class MainWindow : Window
                     : _lastShape);
                 break;
             case VirtualKey.R: ToggleRuler(); break;
-            case >= VirtualKey.Number1 and <= VirtualKey.Number6:
+            case >= VirtualKey.Number1 and <= VirtualKey.Number5:
             {
                 int i = k - VirtualKey.Number1;
-                var colors = _settings.Tool == Tool.Highlighter ? HlColors : PenColors;
-                if (i < colors.Length) PickColor(colors[i]);
+                bool hl = _settings.Tool == Tool.Highlighter;
+                var colors = hl ? HlColors : PenColors;
+                PickColor(i < colors.Length ? colors[i] : hl ? _settings.HlCustomColor : _settings.PenCustomColor);
                 break;
             }
             case VirtualKey.Delete:
