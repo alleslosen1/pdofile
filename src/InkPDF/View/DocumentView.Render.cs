@@ -47,6 +47,14 @@ public sealed partial class DocumentView
     bool _wetLayerClear;
     float _tileDpi;
 
+    const double InkBudgetMs = 10;
+    readonly System.Diagnostics.Stopwatch _frameClock = new();
+    bool _inkPending;
+    int _fullRendersThisFrame;
+    int _inkFallbackLevel;
+
+    internal bool InkPending => _inkPending;
+
     /// <summary>Render target of exactly w×h device pixels at the canvas DPI (so it blits 1:1).</summary>
     CanvasRenderTarget CreateTarget(CanvasDevice dev, int w, int h) =>
         new(dev, (w + 0.25f) * 96f / _tileDpi, (h + 0.25f) * 96f / _tileDpi, _tileDpi);
@@ -58,6 +66,7 @@ public sealed partial class DocumentView
         _inkByPage.Clear();
         _tileUsed.Clear();
         _fallbackLevel = 0;
+        _inkFallbackLevel = 0;
         _engine?.ClearTiles();
         _wetLayer?.Dispose();
         _wetLayer = null;
@@ -103,6 +112,9 @@ public sealed partial class DocumentView
         ds.Clear(BgColor);
         if (_engine == null || _store == null) return;
         _frame++;
+        _frameClock.Restart();
+        _inkPending = false;
+        _fullRendersThisFrame = 0;
         var dev = sender.Device;
         if (sender.Dpi != _tileDpi)
         {
@@ -117,6 +129,8 @@ public sealed partial class DocumentView
         bool all = true;
         for (int i = first; i <= last; i++) all &= DrawPage(ds, dev, i, level, wanted);
         if (all) _fallbackLevel = level;
+        if (_inkPending) Invalidate();   // keep going next frame
+        else _inkFallbackLevel = level;
         wanted.Sort((a, b) => a.prio.CompareTo(b.prio));
         _engine.SetWanted(wanted.Select(w => w.key).ToList());
 
@@ -177,6 +191,8 @@ public sealed partial class DocumentView
         {
             var k = new TileKey(i, level, tx, ty);
             var it = hasInk ? GetInkTile(dev, i, level, tx, ty, W, H) : null;
+            var pending = it is { Full: true } ? it : null;
+            if (pending != null) it = null;
             float x = o.X + tx * Tile, y = o.Y + ty * Tile;
             if (tiles.TryGetValue(k, out var bmp))
             {
@@ -195,8 +211,30 @@ public sealed partial class DocumentView
             }
             if (it?.Pen != null)
                 ds.DrawImage(it.Pen, new Rect(x, y, it.W, it.H), PxRect(it.Pen), 1, CanvasImageInterpolation.NearestNeighbor);
+            if (pending != null) DrawInkFallback(ds, i, o, pending);
         }
         return all;
+    }
+
+    /// <summary>Until an ink tile is rendered at the new zoom, stretch the last complete level's ink.</summary>
+    void DrawInkFallback(CanvasDrawingSession ds, int page, Vector2 o, InkTile cur)
+    {
+        if (_inkFallbackLevel == 0 || _inkFallbackLevel == cur.Key.Level) return;
+        float ratio = _px / (_inkFallbackLevel / 1000f);
+        int fx0 = (int)(cur.X0 / ratio) / Tile, fx1 = (int)((cur.X0 + cur.W - 1) / ratio) / Tile;
+        int fy0 = (int)(cur.Y0 / ratio) / Tile, fy1 = (int)((cur.Y0 + cur.H - 1) / ratio) / Tile;
+        using (ds.CreateLayer(1f, new Rect(o.X + cur.X0, o.Y + cur.Y0, cur.W, cur.H)))
+        {
+            for (int ty = fy0; ty <= fy1; ty++)
+            for (int tx = fx0; tx <= fx1; tx++)
+            {
+                if (!_inkTiles.TryGetValue(new TileKey(page, _inkFallbackLevel, tx, ty), out var ft) || ft.Full) continue;
+                ft.Used = _frame;
+                var dst = new Rect(o.X + ft.X0 * ratio, o.Y + ft.Y0 * ratio, ft.W * ratio, ft.H * ratio);
+                if (ft.Hl != null) ds.DrawImage(ft.Hl, dst, PxRect(ft.Hl), 0.55f, CanvasImageInterpolation.Linear);
+                if (ft.Pen != null) ds.DrawImage(ft.Pen, dst, PxRect(ft.Pen), 1, CanvasImageInterpolation.Linear);
+            }
+        }
     }
 
     /// <summary>While new-zoom tiles render, stretch the last complete zoom level's tiles.</summary>
@@ -235,7 +273,19 @@ public sealed partial class DocumentView
             list.Add(t);
         }
         t.Used = _frame;
-        if (t.Full || !t.Dirty.IsEmpty) RenderInkTile(dev, t);
+        if (t.Full)
+        {
+            // Full tile renders are the expensive ones (every stroke in the tile). Spread them over
+            // frames so a dense page or a zoom step never stalls the UI; edits stay immediate.
+            if (_fullRendersThisFrame > 0 && _frameClock.Elapsed.TotalMilliseconds > InkBudgetMs)
+            {
+                _inkPending = true;
+                return t;
+            }
+            _fullRendersThisFrame++;
+            RenderInkTile(dev, t);
+        }
+        else if (!t.Dirty.IsEmpty) RenderInkTile(dev, t);
         return t;
     }
 
@@ -291,7 +341,7 @@ public sealed partial class DocumentView
         {
             ds.Clear(clear);
             ds.Transform = m;
-            foreach (var s in strokes) if (s.Kind == kind) ds.FillGeometry(InkGeometry.Get(dev, s), C(s.Color));
+            foreach (var s in strokes) if (s.Kind == kind) InkGeometry.Draw(ds, s, C(s.Color));
             return;
         }
         using (ds.CreateLayer(1f, region))
@@ -300,7 +350,7 @@ public sealed partial class DocumentView
             ds.FillRectangle(region, clear);
             ds.Blend = CanvasBlend.SourceOver;
             ds.Transform = m;
-            foreach (var s in strokes) if (s.Kind == kind) ds.FillGeometry(InkGeometry.Get(dev, s), C(s.Color));
+            foreach (var s in strokes) if (s.Kind == kind) InkGeometry.Draw(ds, s, C(s.Color));
         }
     }
 
@@ -387,12 +437,11 @@ public sealed partial class DocumentView
         {
             var pts = new List<InkPoint> { ctrl[w.Frozen] };
             for (int i = w.Frozen; i < finalEnd; i++) StrokeMath.AppendSegment(pts, ctrl, i, true);
-            using (var g = InkGeometry.Build(dev, CollectionsMarshal.AsSpan(pts)))
             using (var lds = layer.CreateDrawingSession())
             {
                 lds.Units = CanvasUnits.Pixels;
                 lds.Transform = m;
-                lds.FillGeometry(g, C(w.Color));
+                InkGeometry.Draw(lds, CollectionsMarshal.AsSpan(pts), C(w.Color));
             }
             w.Frozen = finalEnd;
         }
@@ -400,12 +449,9 @@ public sealed partial class DocumentView
 
         var tail = new List<InkPoint> { ctrl[w.Frozen] };
         for (int i = w.Frozen; i < n - 1; i++) StrokeMath.AppendSegment(tail, ctrl, i, true);
-        using (var g = InkGeometry.Build(dev, CollectionsMarshal.AsSpan(tail)))
-        {
-            ds.Transform = m;
-            ds.FillGeometry(g, C(w.Color));
-            ds.Transform = Matrix3x2.Identity;
-        }
+        ds.Transform = m;
+        InkGeometry.Draw(ds, CollectionsMarshal.AsSpan(tail), C(w.Color));
+        ds.Transform = Matrix3x2.Identity;
     }
 
     void DrawStrokes(CanvasDrawingSession ds, CanvasDevice dev, IEnumerable<Stroke> strokes, Matrix3x2 m, bool cached)
@@ -425,15 +471,7 @@ public sealed partial class DocumentView
         foreach (var s in list) if (s.Kind == StrokeKind.Pen) Fill(s);
         ds.Transform = Matrix3x2.Identity;
 
-        void Fill(Stroke s)
-        {
-            if (cached) ds.FillGeometry(InkGeometry.Get(dev, s), C(s.Color));
-            else
-            {
-                using var g = InkGeometry.Build(dev, s.RenderPoints);
-                ds.FillGeometry(g, C(s.Color));
-            }
-        }
+        void Fill(Stroke s) => InkGeometry.Draw(ds, s, C(s.Color));
     }
 
     void DrawPreview(CanvasDrawingSession ds, CanvasDevice dev)

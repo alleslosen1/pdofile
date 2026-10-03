@@ -132,6 +132,7 @@ public sealed partial class DocumentView : Grid
         _inkByPage.Clear();
         _tileUsed.Clear();
         _fallbackLevel = 0;
+        _inkFallbackLevel = 0;
         _tileDpi = 0;   // next frame re-applies the DPI to the new engine
         _engine = null;
         _store = null;

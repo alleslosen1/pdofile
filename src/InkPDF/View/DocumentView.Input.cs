@@ -68,7 +68,7 @@ public sealed partial class DocumentView
     Vector2 _hover;
     bool _hoverOn, _hoverEraser;
 
-    static bool KeyDown(VirtualKey k) =>
+    static bool IsKeyDown(VirtualKey k) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(k).HasFlag(CoreVirtualKeyStates.Down);
 
     // ---- pointer dispatch ------------------------------------------------------------------
@@ -414,7 +414,7 @@ public sealed partial class DocumentView
     void MoveShape(Vector2 pos)
     {
         var p = ToPage(_gPage, pos);
-        _preview = Shapes.FromDrag(Settings.Tool, _gPage, _shapeStart, p, KeyDown(VirtualKey.Shift), Settings, Settings.PenWidth / 2, Settings.PenColor);
+        _preview = Shapes.FromDrag(Settings.Tool, _gPage, _shapeStart, p, IsKeyDown(VirtualKey.Shift), Settings, Settings.PenWidth / 2, Settings.PenColor);
     }
 
     void BeginRulerLine(Vector2 pos, int side)
@@ -570,7 +570,7 @@ public sealed partial class DocumentView
             case TransformMode.Rotate:
             {
                 float a = AngleOf(p - _tAnchor) - AngleOf(_tStart - _tAnchor);
-                if (KeyDown(VirtualKey.Shift)) a = MathF.Round(a / (MathF.PI / 12)) * (MathF.PI / 12);
+                if (IsKeyDown(VirtualKey.Shift)) a = MathF.Round(a / (MathF.PI / 12)) * (MathF.PI / 12);
                 _sel.Transform = Matrix3x2.CreateRotation(a, _tAnchor);
                 break;
             }

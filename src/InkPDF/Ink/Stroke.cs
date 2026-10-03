@@ -64,7 +64,6 @@ public sealed class Stroke
     }
 
     // Owned by the view (UI thread only).
-    internal object? RenderCache;
     internal int Stamp;
     internal bool Selected;
 

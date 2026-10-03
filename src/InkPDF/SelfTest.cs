@@ -43,8 +43,15 @@ public sealed partial class MainWindow
             }
             var sw = Stopwatch.StartNew();
             DocView.TestCommit(strokes);
-            await DocView.NextFrame();
-            L($"added {strokes.Count} strokes; commit+first frame {sw.ElapsedMilliseconds} ms (frame {DocView.LastDrawMs:0.0} ms)");
+            var (maxF, frames) = await DrainInk();
+            L($"added {strokes.Count} strokes; fully drawn after {sw.ElapsedMilliseconds} ms over {frames} frames, worst frame {maxF:0.0} ms");
+
+            sw.Restart();
+            DocView.ZoomBy(1.25f);
+            (maxF, frames) = await DrainInk();
+            L($"zoom step: ink redrawn after {sw.ElapsedMilliseconds} ms over {frames} frames, worst frame {maxF:0.0} ms");
+            DocView.ZoomBy(1 / 1.25f);
+            await DrainInk();
 
             // Idle frames (nothing dirty) should be cheap: just blits.
             var idle = new List<double>();
@@ -138,6 +145,20 @@ public sealed partial class MainWindow
             _savedVersion = _store?.Version ?? 0;
             Close();
         }
+    }
+
+    /// <summary>Draws frames until no ink tiles are pending; returns the worst frame time and frame count.</summary>
+    async Task<(double maxMs, int frames)> DrainInk()
+    {
+        double max = 0;
+        int n = 0;
+        do
+        {
+            await DocView.NextFrame();
+            max = Math.Max(max, DocView.LastDrawMs);
+            n++;
+        } while (DocView.InkPending && n < 2000);
+        return (max, n);
     }
 
     static double Pct(List<double> v, double p)
