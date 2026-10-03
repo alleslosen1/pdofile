@@ -1,0 +1,164 @@
+<Window x:Class="InkPDF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:view="using:InkPDF.View">
+  <Grid x:Name="Root" AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop">
+    <Grid.Resources>
+      <Style x:Key="BarButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Padding" Value="9,5" />
+        <Setter Property="MinWidth" Value="34" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="AllowFocusOnInteraction" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+      </Style>
+      <Style x:Key="ToolToggle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+        <Setter Property="Padding" Value="9,5" />
+        <Setter Property="MinWidth" Value="34" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="AllowFocusOnInteraction" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+      </Style>
+      <Style x:Key="Sep" TargetType="Border">
+        <Setter Property="Width" Value="1" />
+        <Setter Property="Margin" Value="5,6" />
+        <Setter Property="Background" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+      </Style>
+    </Grid.Resources>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Padding="6,4" BorderThickness="0,0,0,1"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button Style="{StaticResource BarButton}" Click="Open_Click" ToolTipService.ToolTip="Open PDF (Ctrl+O)">
+              <FontIcon Glyph="&#xE8E5;" FontSize="16" />
+            </Button>
+            <Button Style="{StaticResource BarButton}" Click="Save_Click" ToolTipService.ToolTip="Save (Ctrl+S)">
+              <FontIcon Glyph="&#xE74E;" FontSize="16" />
+            </Button>
+            <Button Style="{StaticResource BarButton}" ToolTipService.ToolTip="Save as / export">
+              <FontIcon Glyph="&#xE792;" FontSize="16" />
+              <Button.Flyout>
+                <MenuFlyout>
+                  <MenuFlyoutItem Text="Save as…   Ctrl+Shift+S" Click="SaveAs_Click" />
+                  <MenuFlyoutItem Text="Export flattened copy (for students)…" Click="Export_Click" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+            <Border Style="{StaticResource Sep}" />
+            <Button Style="{StaticResource BarButton}" Click="Undo_Click" ToolTipService.ToolTip="Undo (Ctrl+Z)">
+              <FontIcon Glyph="&#xE7A7;" FontSize="16" />
+            </Button>
+            <Button Style="{StaticResource BarButton}" Click="Redo_Click" ToolTipService.ToolTip="Redo (Ctrl+Y)">
+              <FontIcon Glyph="&#xE7A6;" FontSize="16" />
+            </Button>
+            <Border Style="{StaticResource Sep}" />
+
+            <ToggleButton x:Name="PenBtn" Tag="Pen" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Pen (P)">
+              <FontIcon Glyph="&#xEE56;" FontSize="17" />
+            </ToggleButton>
+            <ToggleButton x:Name="HlBtn" Tag="Highlighter" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Highlighter (H)">
+              <FontIcon Glyph="&#xE7E6;" FontSize="17" />
+            </ToggleButton>
+            <ToggleButton x:Name="EraserBtn" Tag="Eraser" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Eraser (E). Pen eraser tip, right button or barrel button also erase.">
+              <FontIcon Glyph="&#xE75C;" FontSize="17" />
+            </ToggleButton>
+            <ToggleButton x:Name="WholeBtn" Style="{StaticResource ToolToggle}" Click="Whole_Click" Content="Whole" FontSize="12" Visibility="Collapsed" ToolTipService.ToolTip="Eraser removes whole strokes instead of only what it touches (Shift+E)" />
+            <ToggleButton x:Name="LassoBtn" Tag="Lasso" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Lasso select: move, resize, rotate, recolour (L)">
+              <FontIcon Glyph="&#xEF20;" FontSize="17" />
+            </ToggleButton>
+            <ToggleButton x:Name="HandBtn" Tag="Hand" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Pan (hold Space, or middle mouse button)">
+              <FontIcon Glyph="&#xE759;" FontSize="17" />
+            </ToggleButton>
+            <Border Style="{StaticResource Sep}" />
+
+            <ToggleButton x:Name="LineBtn" Tag="Line" Style="{StaticResource ToolToggle}" Click="Tool_Click" Content="╱" FontSize="16" ToolTipService.ToolTip="Line (S cycles shapes). Shift snaps angles." />
+            <ToggleButton x:Name="ArrowBtn" Tag="Arrow" Style="{StaticResource ToolToggle}" Click="Tool_Click" Content="→" FontSize="16" ToolTipService.ToolTip="Arrow" />
+            <ToggleButton x:Name="RectBtn" Tag="Rect" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Rectangle (Shift = square)">
+              <FontIcon Glyph="&#xE739;" FontSize="17" />
+            </ToggleButton>
+            <ToggleButton x:Name="EllipseBtn" Tag="Ellipse" Style="{StaticResource ToolToggle}" Click="Tool_Click" ToolTipService.ToolTip="Ellipse (Shift = circle)">
+              <FontIcon Glyph="&#xEA3A;" FontSize="17" />
+            </ToggleButton>
+            <ToggleButton x:Name="AxesBtn" Tag="Axes" Style="{StaticResource ToolToggle}" Click="Tool_Click" Content="Axes" ToolTipService.ToolTip="Coordinate axes (options in ⚙)" />
+            <ToggleButton x:Name="RulerBtn" Style="{StaticResource ToolToggle}" Click="Ruler_Click" ToolTipService.ToolTip="Ruler (R). Drag to move, drag the ⟳ knob or scroll over it to rotate. Draw along its edge for straight lines.">
+              <FontIcon Glyph="&#xED5E;" FontSize="17" />
+            </ToggleButton>
+            <Border Style="{StaticResource Sep}" />
+
+            <StackPanel x:Name="Swatches" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" />
+            <Border Style="{StaticResource Sep}" />
+            <Button Style="{StaticResource BarButton}" ToolTipService.ToolTip="Size  ( [ and ] keys )">
+              <TextBlock x:Name="SizeLabel" FontSize="12" Text="1.6 pt" />
+              <Button.Flyout>
+                <Flyout>
+                  <StackPanel Width="240" Spacing="4">
+                    <TextBlock x:Name="SizeHeader" Text="Pen width" />
+                    <Slider x:Name="SizeSlider" ValueChanged="Size_Changed" />
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+            <Button Style="{StaticResource BarButton}" ToolTipService.ToolTip="Settings">
+              <FontIcon Glyph="&#xE713;" FontSize="16" />
+              <Button.Flyout>
+                <Flyout>
+                  <StackPanel Spacing="10" Width="260">
+                    <ComboBox x:Name="SmoothBox" Header="Ink smoothing" HorizontalAlignment="Stretch" SelectionChanged="Settings_Changed">
+                      <x:String>Off</x:String>
+                      <x:String>Light</x:String>
+                      <x:String>Medium</x:String>
+                      <x:String>Strong</x:String>
+                    </ComboBox>
+                    <ToggleSwitch x:Name="PressureSwitch" Header="Pen pressure" Toggled="Settings_Changed" />
+                    <ToggleSwitch x:Name="HoldSwitch" Header="Hold pen still to straighten shapes" Toggled="Settings_Changed" />
+                    <NumberBox x:Name="AxesUnitsBox" Header="Axes: ticks per side" Minimum="1" Maximum="40" SpinButtonPlacementMode="Inline" ValueChanged="AxesUnits_Changed" />
+                    <ToggleSwitch x:Name="AxesGridSwitch" Header="Axes: draw grid" Toggled="Settings_Changed" />
+                    <ToggleSwitch x:Name="AxesQuadSwitch" Header="Axes: first quadrant only" Toggled="Settings_Changed" />
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <view:DocumentView x:Name="DocView" Grid.Row="1" />
+    <Border Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,16" Padding="4,2"
+            CornerRadius="8" BorderThickness="1"
+            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            x:Name="ZoomPill" Visibility="Collapsed">
+
+        <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <TextBlock x:Name="PageLabel" VerticalAlignment="Center" Margin="8,0" FontSize="12" />
+          <Button Style="{StaticResource BarButton}" Click="ZoomOut_Click" ToolTipService.ToolTip="Zoom out (Ctrl+-)">
+            <FontIcon Glyph="&#xE71F;" FontSize="16" />
+          </Button>
+          <TextBlock x:Name="ZoomLabel" VerticalAlignment="Center" Width="44" TextAlignment="Center" FontSize="12" />
+          <Button Style="{StaticResource BarButton}" Click="ZoomIn_Click" ToolTipService.ToolTip="Zoom in (Ctrl++)">
+            <FontIcon Glyph="&#xE8A3;" FontSize="16" />
+          </Button>
+          <Button Style="{StaticResource BarButton}" Click="Fit_Click" Content="Fit" ToolTipService.ToolTip="Fit width (Ctrl+0)" />
+        </StackPanel>
+    </Border>
+
+    <StackPanel x:Name="EmptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+      <TextBlock Text="Open a PDF to start writing" FontSize="22" HorizontalAlignment="Center" />
+      <Button Content="Open PDF…  (Ctrl+O)" Click="Open_Click" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" />
+      <TextBlock Text="or drop a PDF file anywhere in this window" Opacity="0.6" HorizontalAlignment="Center" />
+    </StackPanel>
+  </Grid>
+</Window>
