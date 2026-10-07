@@ -483,3 +483,18 @@ $RECYCLE.BIN/
 
 # Local test builds
 build/
+
+# Never commit credentials, keys or local data
+.env
+.env.*
+secrets.json
+settings.json
+*.pem
+*.key
+*.pfx
+*.p12
+*.snk
+*.ink
+crash.log
+# Test documents (PDFs are not part of the source)
+*.pdf
