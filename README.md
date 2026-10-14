@@ -9,6 +9,7 @@ write and fix equations, draw graphs and shapes, then hand the annotated PDF to 
 - **Shapes** — line, arrow, rectangle, ellipse and coordinate axes (with grid). Hold the pen still at the
   end of a stroke to straighten it into a line, circle or polygon; hold **Shift** to draw a straight line.
 - **Lasso** — select ink to move, resize, rotate, recolour, copy or delete.
+- **Dark interface** — Acrobat-style dark theme: tools on a left rail, page and zoom controls on a right rail.
 - **Ruler** — drag it anywhere, rotate it, and draw along its edge for straight lines.
 - **Standard PDFs** — ink is saved as normal PDF ink annotations, so it shows up in Acrobat, Edge,
   Chrome and other readers. *Export flattened copy* bakes the ink into the pages for sharing.
@@ -146,6 +147,7 @@ cloud sync, handwriting-to-LaTeX, macOS / Linux / iPad.
 | Performance pass | Stroke rendering switched from geometry unions to batched discs + segments, and full tile renders are spread across frames. On the 4,800-stroke page: first draw 1.1 s → 0.3 s, zoom step 0.94 s → 0.21 s, erase frame ≈ 1 ms. |
 | Feedback round | Shift-to-draw-straight-lines; four default colours (black, dark blue, red, green) plus a colour wheel. |
 | Release 0.1.0 | Renamed to pdofile; dropped ~45 MB of unused AI runtimes from the Windows App SDK; published a 70.6 MB single exe and a 68.9 MB portable zip. |
+| Release 0.2.0 | Acrobat-style dark UI: custom title bar with Menu and document tab, contextual tool-options bar, vertical tool rail, page/zoom rail with an editable page number. Tested on real 382- and 578-page textbooks (53–73 MB): erase frames ≈ 0.7 ms, saves in 1.3–1.9 s, and handwriting already in the files from other apps is imported, kept and round-trips. |
 
 **Measured performance** (Intel i5-12450HX, synthetic page with 4,800 strokes):
 
