@@ -153,7 +153,10 @@ public sealed partial class DocumentView
         var o = PageOrigin(i);
         int W = PageW(i), H = PageH(i);
         var pageRect = new Rect(o.X, o.Y, W, H);
-        ds.FillRectangle(new Rect(o.X - 1, o.Y - 1, W + 2, H + 3), ColorHelper.FromArgb(60, 0, 0, 0));
+        // Soft drop shadow, readable against the dark document area.
+        float sh = 2 * Dpi;
+        ds.FillRectangle(new Rect(o.X - sh, o.Y - sh / 2, W + 2 * sh, H + 3 * sh), ColorHelper.FromArgb(40, 0, 0, 0));
+        ds.FillRectangle(new Rect(o.X - 1, o.Y, W + 2, H + 2 * Dpi), ColorHelper.FromArgb(90, 0, 0, 0));
         ds.FillRectangle(pageRect, Colors.White);
 
         int vx0 = Math.Max(0, (int)-o.X), vy0 = Math.Max(0, (int)-o.Y);
@@ -561,6 +564,6 @@ public sealed partial class DocumentView
     {
         if (!ScrollbarVisible) return;
         var r = ScrollThumb();
-        ds.FillRoundedRectangle(r, 3 * Dpi, 3 * Dpi, ColorHelper.FromArgb(_g == Gesture.Scrollbar ? (byte)170 : (byte)110, 60, 64, 72));
+        ds.FillRoundedRectangle(r, 3 * Dpi, 3 * Dpi, ColorHelper.FromArgb(_g == Gesture.Scrollbar ? (byte)200 : (byte)120, 200, 200, 200));
     }
 }

@@ -17,11 +17,19 @@ public sealed partial class MainWindow
         void L(string s) { log.AppendLine(s); Debug.WriteLine(s); }
         try
         {
+            Recovery.Delete(input);   // never stop at a recovery prompt
             await OpenPath(input);
             if (_store == null || _engine == null) throw new Exception("open failed");
-            await WaitFor(() => _store.IsAcknowledged(0), 5000);
+            // Read the ink that already exists in the file (e.g. from other apps) on every page.
+            var store = _store;
+            var sw = Stopwatch.StartNew();
+            _engine.PreImport(Enumerable.Range(0, _engine.PageCount));
+            await WaitFor(() => Enumerable.Range(0, store.PageCount).All(store.IsAcknowledged), 60000);
             for (int i = 0; i < 5; i++) await DocView.NextFrame();
-            L($"open: pages={_engine.PageCount} page0 imported strokes={_store.PageStrokes(0).Count}");
+            var existing = Enumerable.Range(0, store.PageCount).Where(p => store.HasStrokes(p)).ToList();
+            L($"open: pages={_engine.PageCount}, existing ink read on all pages in {sw.ElapsedMilliseconds} ms: " +
+              (existing.Count == 0 ? "none" : string.Join(", ", existing.Select(p => $"p{p + 1}={store.PageStrokes(p).Count}"))));
+            _inkPage = existing.Where(p => p > 1).OrderByDescending(p => store.PageStrokes(p).Count).Select(p => (int?)p).FirstOrDefault();
 
             // Dense handwriting-like strokes over page 1.
             var rnd = new Random(7);
@@ -41,7 +49,7 @@ public sealed partial class MainWindow
                 }
                 strokes.Add(new Stroke { Page = 0, Points = pts, Color = 0x1E5BD8, Seq = _store.NextSeq() });
             }
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             DocView.TestCommit(strokes);
             var (maxF, frames) = await DrainInk();
             L($"added {strokes.Count} strokes; fully drawn after {sw.ElapsedMilliseconds} ms over {frames} frames, worst frame {maxF:0.0} ms");
@@ -119,7 +127,7 @@ public sealed partial class MainWindow
             foreach (var (page, n) in expect)
             {
                 int m = got.TryGetValue(page, out var l) ? l.Count : -1;
-                L($"roundtrip page {page + 1}: saved {n}, reloaded {m}");
+                if (n != 0 || m != 0) L($"roundtrip page {page + 1}: saved {n}, reloaded {m}{(n == m ? "" : "   <-- MISMATCH")}");
                 ok &= n == m;
             }
             var hl = got.GetValueOrDefault(p2)?.Count(s => s.Kind == StrokeKind.Highlighter) ?? 0;
@@ -134,7 +142,8 @@ public sealed partial class MainWindow
         }
         if (keepOpen && DocView.PageCount > 1)
         {
-            DocView.GoToPage(1);
+            // Show existing third-party ink if the file had any, otherwise the shapes page.
+            DocView.GoToPage(_inkPage ?? 1);
             for (int i = 0; i < 30 && _engine != null; i++) await DocView.NextFrame();
             await Task.Delay(500);
             await DocView.NextFrame();
@@ -160,6 +169,8 @@ public sealed partial class MainWindow
         } while (DocView.InkPending && n < 2000);
         return (max, n);
     }
+
+    int? _inkPage;
 
     static double Pct(List<double> v, double p)
     {

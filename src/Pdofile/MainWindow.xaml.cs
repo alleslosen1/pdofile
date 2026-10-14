@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
         Title = "pdofile";
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1400, 950));
         AppWindow.Closing += OnClosing;
+        SetUpTitleBar();
 
         _toolButtons =
         [
@@ -76,11 +77,43 @@ public sealed partial class MainWindow : Window
 
     bool IsDirty => _store != null && _store.Version != _savedVersion;
 
+    /// <summary>Completes once the window content is in the visual tree (dialogs need a XamlRoot).</summary>
+    Task WhenLoaded()
+    {
+        if (Root.XamlRoot != null && Root.IsLoaded) return Task.CompletedTask;
+        var tcs = new TaskCompletionSource();
+        Root.Loaded += (_, _) => tcs.TrySetResult();
+        return tcs.Task;
+    }
+
+    /// <summary>Dark, Acrobat-style title bar: our own content with Windows' caption buttons recoloured.</summary>
+    void SetUpTitleBar()
+    {
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleDrag);
+        var tb = AppWindow.TitleBar;
+        tb.ButtonBackgroundColor = Colors.Transparent;
+        tb.ButtonInactiveBackgroundColor = Colors.Transparent;
+        tb.ButtonForegroundColor = ColorHelper.FromArgb(255, 0xE6, 0xE6, 0xE6);
+        tb.ButtonInactiveForegroundColor = ColorHelper.FromArgb(255, 0x80, 0x80, 0x80);
+        tb.ButtonHoverBackgroundColor = ColorHelper.FromArgb(255, 0x3A, 0x3A, 0x3A);
+        tb.ButtonHoverForegroundColor = Colors.White;
+        tb.ButtonPressedBackgroundColor = ColorHelper.FromArgb(255, 0x4A, 0x4A, 0x4A);
+        tb.ButtonPressedForegroundColor = Colors.White;
+        // Leave room for the caption buttons (RightInset is in physical pixels).
+        TitleBar.Loaded += (_, _) =>
+        {
+            double scale = TitleBar.XamlRoot?.RasterizationScale ?? 1;
+            if (tb.RightInset > 0) CaptionColumn.Width = new GridLength(tb.RightInset / scale);
+        };
+    }
+
     async void OnActivated(object sender, WindowActivatedEventArgs args)
     {
         Win32.DisablePenFeedback(_hwnd);
         if (_started) return;
         _started = true;
+        await WhenLoaded();
         DocView.FocusCanvas();
         var cmd = Environment.GetCommandLineArgs();
         if (cmd.Length >= 5 && cmd[1] == "--selftest")
@@ -298,6 +331,7 @@ public sealed partial class MainWindow : Window
         _dialogOpen = true;
         try
         {
+            await WhenLoaded();
             d.XamlRoot = Content.XamlRoot;
             return await d.ShowAsync();
         }
@@ -327,7 +361,18 @@ public sealed partial class MainWindow : Window
 
     void Tool_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string t } && Enum.TryParse<Tool>(t, out var tool)) SetTool(tool);
+        if (sender is FrameworkElement { Tag: string t } && Enum.TryParse<Tool>(t, out var tool))
+        {
+            SetTool(tool);
+            if (ToolSettings.IsShapeTool(tool)) ShapesFlyout.Hide();
+        }
+    }
+
+    void Shapes_Click(object sender, RoutedEventArgs e)
+    {
+        // The rail button opens the shapes palette; its checked state just mirrors "a shape tool is active".
+        SyncToolbar();
+        FlyoutBase.ShowAttachedFlyout(ShapesBtn);
     }
 
     void SetTool(Tool t)
@@ -360,6 +405,21 @@ public sealed partial class MainWindow : Window
         WholeBtn.IsChecked = _settings.EraserWholeStroke;
         WholeBtn.Visibility = _settings.Tool == Tool.Eraser ? Visibility.Visible : Visibility.Collapsed;
         RulerBtn.IsChecked = _settings.RulerVisible;
+        ShapesBtn.IsChecked = ToolSettings.IsShapeTool(_settings.Tool);
+        ToolLabel.Text = _settings.Tool switch
+        {
+            Tool.Pen => "Pen",
+            Tool.Highlighter => "Highlighter",
+            Tool.Eraser => "Eraser",
+            Tool.Lasso => "Select",
+            Tool.Hand => "Pan",
+            Tool.Line => "Line",
+            Tool.Arrow => "Arrow",
+            Tool.Rect => "Rectangle",
+            Tool.Ellipse => "Ellipse",
+            Tool.Axes => "Axes",
+            _ => "",
+        };
 
         switch (_settings.Tool)
         {
@@ -538,19 +598,43 @@ public sealed partial class MainWindow : Window
 
     void UpdateStatus()
     {
-        ZoomPill.Visibility = DocView.HasDocument ? Visibility.Visible : Visibility.Collapsed;
+        NavPanel.Visibility = DocView.HasDocument ? Visibility.Visible : Visibility.Collapsed;
         if (!DocView.HasDocument)
         {
             PageLabel.Text = "";
             ZoomLabel.Text = "";
             return;
         }
-        PageLabel.Text = $"Page {DocView.CurrentPage + 1} / {DocView.PageCount}";
+        if (PageBox.FocusState == FocusState.Unfocused) PageBox.Text = (DocView.CurrentPage + 1).ToString();
+        PageLabel.Text = $"of {DocView.PageCount}";
         ZoomLabel.Text = $"{DocView.ZoomPercent:0}%";
     }
 
+    void PrevPage_Click(object sender, RoutedEventArgs e) => DocView.GoToPage(DocView.CurrentPage - 1);
+    void NextPage_Click(object sender, RoutedEventArgs e) => DocView.GoToPage(DocView.CurrentPage + 1);
+    void Exit_Click(object sender, RoutedEventArgs e) => Close();
+
+    void PageBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            if (int.TryParse(PageBox.Text.Trim(), out int n)) DocView.GoToPage(n - 1);
+            e.Handled = true;
+            DocView.FocusCanvas();
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            DocView.FocusCanvas();
+        }
+    }
+
+    void PageBox_LostFocus(object sender, RoutedEventArgs e) => UpdateStatus();
+
     void UpdateTitle()
     {
+        DocTab.Visibility = _path == null ? Visibility.Collapsed : Visibility.Visible;
+        TabTitle.Text = _path == null ? "" : $"{Path.GetFileName(_path)}{(IsDirty ? "  ●" : "")}";
         Title = _path == null ? "pdofile" : $"{(IsDirty ? "● " : "")}{Path.GetFileName(_path)} — pdofile";
     }
 

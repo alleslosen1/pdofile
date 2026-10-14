@@ -20,7 +20,8 @@ public sealed partial class DocumentView : Grid
 {
     const float GapPt = 14f;
     const int Tile = PdfEngine.TileSize;
-    static readonly Color BgColor = ColorHelper.FromArgb(255, 0xD9, 0xDC, 0xE1);
+    // Dark document area around the pages (Acrobat-style dark theme).
+    static readonly Color BgColor = ColorHelper.FromArgb(255, 0x32, 0x32, 0x32);
 
     readonly CanvasControl _canvas;
     readonly DispatcherQueueTimer _holdTimer;
